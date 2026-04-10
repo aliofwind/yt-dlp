@@ -193,13 +193,34 @@ class WeiboIE(WeiboBaseIE):
     def _real_extract(self, url):
         video_id = self._match_id(url)
 
-        meta = self._weibo_download_json(
-            'https://weibo.com/ajax/statuses/show', video_id, query={'id': video_id})
-        mix_media_info = traverse_obj(meta, ('mix_media_info', 'items', ...))
-        if not mix_media_info:
-            return self._parse_video_info(meta)
+        post_data = f'data={{"Component_Play_Playinfo":{{"oid":"{video_id}"}}}}'.encode()
+        video_info = self._weibo_download_json(
+            'https://weibo.com/tv/api/component', video_id,
+            data=post_data, headers={'Referer': url},
+            query={'page': f'/tv/show/{video_id}'})['data']['Component_Play_Playinfo']
 
-        return self.playlist_result(self._entries(mix_media_info), video_id)
+        formats = []
+        for quality, media_url in (video_info.get('urls') or {}).items():
+            if media_url.startswith('//'):
+                media_url = 'https:' + media_url
+            formats.append({
+                'format': quality,
+                'url': media_url,
+                'ext': 'mp4',
+            })
+
+        if video_info.get('stream_url'):
+            formats.append({
+                'format': '流畅',
+                'url': video_info['stream_url'],
+                'ext': 'mp4',
+            })
+
+        return {
+            'id': str(video_info.get('mid') or video_id),
+            'title': video_info.get('title') or video_info.get('text') or f'Weibo video {video_id}',
+            'formats': formats,
+        }
 
     def _entries(self, mix_media_info):
         for media_info in traverse_obj(mix_media_info, lambda _, v: v['type'] != 'pic'):
