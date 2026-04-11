@@ -281,14 +281,37 @@ class WeiboVideoIE(WeiboBaseIE):
         },
     }]
 
-    def _real_extract(self, url):
-        video_id = self._match_id(url)
+	def _real_extract(self, url):
+		video_id = self._match_id(url)
 
-        post_data = f'data={{"Component_Play_Playinfo":{{"oid":"{video_id}"}}}}'.encode()
-        video_info = self._weibo_download_json(
-            'https://weibo.com/tv/api/component', video_id, data=post_data, headers={'Referer': url},
-            query={'page': f'/tv/show/{video_id}'})['data']['Component_Play_Playinfo']
-        return self.url_result(f'https://weibo.com/0/{video_info["mid"]}', WeiboIE)
+		post_data = f'data={{"Component_Play_Playinfo":{{"oid":"{video_id}"}}}}'.encode()
+		video_info = self._weibo_download_json(
+			'https://weibo.com/tv/api/component', video_id,
+			data=post_data, headers={'Referer': url},
+			query={'page': f'/tv/show/{video_id}'})['data']['Component_Play_Playinfo']
+
+		formats = []
+		for quality, media_url in (video_info.get('urls') or {}).items():
+			if media_url.startswith('//'):
+				media_url = 'https:' + media_url
+			formats.append({
+				'format': quality,
+				'url': media_url,
+				'ext': 'mp4',
+			})
+
+		if video_info.get('stream_url'):
+			formats.append({
+				'format': '流畅',
+				'url': video_info['stream_url'],
+				'ext': 'mp4',
+			})
+
+		return {
+			'id': str(video_info.get('mid') or video_id),
+			'title': video_info.get('title') or video_info.get('text') or f'Weibo video {video_id}',
+			'formats': formats,
+		}
 
 
 class WeiboUserIE(WeiboBaseIE):
